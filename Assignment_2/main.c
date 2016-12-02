@@ -58,11 +58,23 @@ int main(int argc, char const *argv[])
 
     // init mutex and semaphore
     // print 0 means initializes of mutex and semaphores are successed
-    if (pthread_mutex_init(&mutex, NULL) != 0) return -1;
+    if (pthread_mutex_init(&mutex, NULL) != 0)  {
+        fprintf(stderr, "mtex_init get error\n");
+        return -1;
+    }
     printf("0\n");
-    if (sem_init(&full, 0, 0) != 0) return -1;
+
+    if (sem_init(&full, 0, 0) != 0) { 
+        fprintf(stderr, "sem_init(&full) get error\n");
+        return -1;
+    } 
     printf("0\n");
-    if (sem_init(&empty, 0, 5) != 0) return -1;
+
+    if (sem_init(&empty, 0, 5) != 0) {
+        fprintf(stderr, "sem_init(&empty) get error\n");
+        return -1; 
+    } 
+
     printf("0\n");
 
     /* 2. Initialize buffer */
@@ -91,7 +103,7 @@ int main(int argc, char const *argv[])
     sleep(sleepTime);
 
     /* 6. Exit */
-    if (pthread_mutex_destroy(&mutex) != 0) return -1;
+    pthread_mutex_destroy(&mutex);
     sem_destroy(&full);
     sem_destroy(&empty);
     free(producers);
@@ -105,23 +117,11 @@ int insert_item(buffer_item item) {
        return 0 if successful, otherwise
        return -1 indicating an error condition */
 
-    // producer wait for buffer has empty entry
-    if (sem_wait(&empty) != 0) return -1;
-
-    // mutex lock for producing   
-    if (pthread_mutex_lock(&mutex) != 0) return -1;
-
     // insert_item in bufffer[footer]
     buffer[footer] = item;
 
     // move footer 
     footer = (footer + 1) % BUFFER_SIZE;
-
-    // mutex unlock
-    if (pthread_mutex_unlock(&mutex) != 0) return -1;
-
-    // add one full semaphore
-    if (sem_post(&full) != 0) return -1;
 
 
 
@@ -134,23 +134,12 @@ int remove_item(buffer_item *item){
        return 0 if successful, otherwise
        return -1 indicating an error condition */
 
-    // consumer wait for buffer has some value (not empty)
-    if (sem_wait(&full) != 0) return -1;
-
-    // mutex lock for consuming
-    if (pthread_mutex_lock(&mutex) != 0) return -1;
 
     // remove item by circular queue via strategy
     // assign buffer[header] to item and header increased
     *item = buffer[header];
     header = (header + 1) % BUFFER_SIZE;
 
-
-    // mutex unlock
-    if (pthread_mutex_unlock(&mutex) != 0) return -1;
-
-    // add one empty semaphore
-    if (sem_post(&empty) != 0) return -1;
 
     return 0;
 }
@@ -160,14 +149,26 @@ void* producer(void *param) {
     srand(time(NULL));
     while (true) {
         /* sleep for a random period of time*/
-        sleep((rand() % 4 + 1));
+        sleep((rand() % 5));
         /* generate a random number */
         item = rand();
+        // producer wait for buffer has empty entry
+        sem_wait(&empty);
+
+        // mutex lock for producing   
+        pthread_mutex_lock(&mutex);
+
         if (insert_item(item))
             fprintf(stderr, "report error condition");
         else
             printf("producer produced %d\n", item);
+        // mutex unlock
+        pthread_mutex_unlock(&mutex);
+
+        // add one full semaphore
+        sem_post(&full);
     }
+
 }
 void* consumer(void *param) {
 
@@ -176,11 +177,22 @@ void* consumer(void *param) {
     srand(time(NULL));
     while (true) {
         /* sleep for a random period of time*/
-        sleep((rand() % 4 + 1));
+        sleep((rand() % 5));
+        // consumer wait for buffer has some value (not empty)
+        sem_wait(&full);
+
+        // mutex lock for consuming
+        pthread_mutex_lock(&mutex);
         if (remove_item(&item))
             fprintf(stderr, "report error condition");
         else
             printf("consumer consumed %d\n", item);
+
+        // mutex unlock
+        pthread_mutex_unlock(&mutex);
+
+        // add one empty semaphore
+        sem_post(&empty);
     }
 
 }
